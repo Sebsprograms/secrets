@@ -3,13 +3,16 @@ const express = require('express');
 const ejs = require('ejs');
 const bodyParser = require('body-parser');
 const mongoose = require("mongoose");
-const md5 = require('md5');
+const bcrypt = require("bcrypt");
 
 const app = express();
 
 app.use(express.static('public'));
 app.set('view engine', 'ejs');
 app.use(bodyParser.urlencoded({extended: true}));
+
+// Security 
+const saltRounds = 10;
 
 // Database
 const uri = process.env.MONGODB_URI;
@@ -37,14 +40,18 @@ app.get('/login', function(req, res) {
 
 app.post('/login', function(req, res) {
     const username = req.body.username;
-    const password = md5(req.body.password);
+    const password = req.body.password;
 
     User.findOne({username: username})
         .then(function(response) {
             if(response) {
-                if(response.password === password) {
-                    res.render("secrets")
-                }
+                bcrypt.compare(password, response.password, function(err, result) {
+                    if(result === true) {
+                        res.render("secrets")
+                    } else {
+                        res.send("Failed to login, invalid credentials");
+                    }
+                });
             } else {
                 res.send("Failed to login, invalid credentials");
             }
@@ -63,23 +70,27 @@ app.get('/register', function(req, res) {
 
 app.post('/register', function(req, res) {
     const username = req.body.username;
-    const password = md5(req.body.password);
+    const password = req.body.password;
 
-    const newUser = new User({
-        username: username,
-        password: password,
+    bcrypt.hash(password, saltRounds, function(err, hash) {
+        const newUser = new User({
+            username: username,
+            password: hash,
+        });
+    
+        newUser.save().then((response) => {
+            if(response) {
+                res.render('secrets');
+            } else {
+                res.send("Failed to create new user");
+            }
+        }).catch((error) => {
+            console.log(error);
+            res.send("Error creating new User.");
+        })
     });
 
-    newUser.save().then((response) => {
-        if(response) {
-            res.render('secrets');
-        } else {
-            res.send("Failed to create new user");
-        }
-    }).catch((error) => {
-        console.log(error);
-        res.send("Error creating new User.");
-    })
+
 });
 
 
